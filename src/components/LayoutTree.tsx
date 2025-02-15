@@ -535,6 +535,8 @@ const TreeNode = ({
             isLastVisible={isLastVisible}
             autofocus={autofocus}
             marginRight={isTableCol1 ? marginRight : 0}
+            isTableView={isTableCol1}
+            duration={500}
           />
         </div>
 
