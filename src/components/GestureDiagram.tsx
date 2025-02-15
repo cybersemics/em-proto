@@ -28,6 +28,13 @@ interface GestureDiagramProps {
   width?: number
   inGestureContainer?: boolean
   cssRaw?: SystemStyleObject
+  /** Whether to render the gesture with rounded corners. */
+  rounded?: boolean
+}
+
+interface Point {
+  x: number
+  y: number
 }
 
 /** Returns the direction resulting from a 90 degree clockwise rotation. */
@@ -70,6 +77,7 @@ const GestureDiagram = ({
   width,
   inGestureContainer,
   cssRaw,
+  rounded,
 }: GestureDiagramProps) => {
   const [id] = useState(createId())
 
@@ -206,6 +214,64 @@ const GestureDiagram = ({
     }
   }
 
+  /** Generates an SVG path string for a curved segment of the gesture.*/
+  const generateArcPath = (start: Point, end: Point, dir: Direction, i: number, fullPath: Direction[]): string => {
+    const radius = size * 0.4
+    const center = { x: 50, y: 50 }
+
+    // For single segment paths, use quadratic curves
+    if (fullPath.length === 1) {
+      const curveRadius = size * 0.75
+      const cpx =
+        dir === 'r' || dir === 'l'
+          ? start.x + (end.x - start.x) / 2
+          : start.x + (dir === 'd' ? curveRadius : -curveRadius)
+
+      const cpy =
+        dir === 'r' || dir === 'l'
+          ? start.y - (dir === 'r' ? curveRadius : -curveRadius)
+          : start.y + (end.y - start.y) / 2
+
+      return `M ${start.x} ${start.y} Q ${cpx} ${cpy} ${end.x} ${end.y}`
+    }
+
+    const pathDirs = fullPath
+    const firstDir = pathDirs[0]
+    const secondDir = pathDirs[1]
+
+    /** Determine base angle based on first direction and second direction. */
+    const getBaseAngle = (first: Direction, second: Direction): number => {
+      if (first === 'l' || first === 'r') {
+        return second === 'u' ? 90 : -90
+      } else {
+        return second === 'r' ? 0 : 180
+      }
+    }
+
+    const clockwise = rotateClockwise(pathDirs[0]) === pathDirs[1]
+    const sweepFlag = clockwise ? 1 : 0
+    const baseAngle = getBaseAngle(firstDir, secondDir)
+
+    // Calculate total angle and segment angle based on path length
+    const totalAngle = (fullPath.length - 1) * (clockwise ? 90 : -90)
+    const segmentAngle = totalAngle / fullPath.length
+
+    // Calculate angles for this segment
+    const [startAngle, endAngle] = [baseAngle + i * segmentAngle, baseAngle + (i + 1) * segmentAngle]
+
+    // Convert angles to radians
+    const startRad = (startAngle * Math.PI) / 180
+    const endRad = (endAngle * Math.PI) / 180
+
+    // Calculate points
+    const startX = center.x + radius * Math.cos(startRad)
+    const startY = center.y + radius * Math.sin(startRad)
+    const endX = center.x + radius * Math.cos(endRad)
+    const endY = center.y + radius * Math.sin(endRad)
+
+    return `M ${startX} ${startY} A ${radius} ${radius} 0 0 ${sweepFlag} ${endX} ${endY}`
+  }
+
   return (
     <svg
       width={width || '100'}
@@ -219,7 +285,7 @@ const GestureDiagram = ({
         <marker
           id={id}
           viewBox='0 0 10 10'
-          refX='5'
+          refX={rounded ? '0' : '5'}
           refY='5'
           markerWidth={arrowSize!}
           markerHeight={arrowSize}
@@ -241,6 +307,7 @@ const GestureDiagram = ({
 
       {pathSegments.map((segment, i) => {
         const { x, y } = positions[i]
+        const nextPos = positions[i + 1] || { x, y }
         return (
           <path
             d={
@@ -253,7 +320,15 @@ const GestureDiagram = ({
                     : i === 2
                       ? 'M 54,40.5 Q 45,49.5 45,58.5'
                       : 'M 45,58.5 L 45,72'
-                : `M ${x} ${y} l ${segment.dx} ${segment.dy}`
+                : rounded
+                  ? generateArcPath(
+                      { x, y },
+                      nextPos,
+                      Array.from(path as string)[i] as Direction,
+                      i,
+                      Array.from(path as string) as Direction[],
+                    )
+                  : `M ${x} ${y} l ${segment.dx} ${segment.dy}`
             }
             // segments do not change independently, so we can use index as the key
             key={i}
